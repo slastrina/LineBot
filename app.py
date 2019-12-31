@@ -13,7 +13,7 @@ from linebot.exceptions import (
     InvalidSignatureError
 )
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage)
+    MessageEvent, TextMessage, TextSendMessage, JoinEvent)
 from pyjokes.jokes_en import jokes_en
 
 app = Flask(__name__)
@@ -52,7 +52,7 @@ def russian_roulette(event):
     line_bot_api.reply_message(
         event.reply_token, [
             TextSendMessage(text=message)
-        ]
+        ], notification_disabled=True
     )
 
 
@@ -74,13 +74,13 @@ sambot nuke
 sambot russian_roulette
 sambot decide_for_us <option1> <option2> <option#>
 sambot tell_me_a_joke <neutral|chuck|all>
-sambot translate <fromlang> <tolang> <content>
+sambot translate <fromlang> <tolang> <content> (https://ctrlq.org/code/19899-google-translate-languages)
 """
 
     line_bot_api.reply_message(
         event.reply_token, [
             TextSendMessage(text=help_message)
-        ]
+        ], notification_disabled=True
     )
 
 
@@ -126,28 +126,59 @@ def message_text(event):
     service, command, rest = command_splitter(event.message.text)
 
     if not service == 'sambot':
-        language = translator.detect(event.message.text).lang
-        if language != 'en':
-            translation = translator.translate(event.message.text, src=language).text
+        try:
+            trans = translator.detect(event.message.text)
+            language = trans.lang
+            percent = trans.confidence * 100
+            if language != 'en' and not percent < 70:
+                translation = translator.translate(event.message.text, src=language).text
 
-            line_bot_api.reply_message(
-                event.reply_token, [
-                    TextSendMessage(text=f'Translation (lang: {language}): {translation}')
-                ]
-            )
+                line_bot_api.reply_message(
+                    event.reply_token, [
+                        TextSendMessage(text=f'Translation (lang: {language}, {percent:.1f}%): {translation}')
+                    ]
+                )
+        except Exception as ex:
+            print(ex, event.message.text)
+
         return
 
     if command:
+        if command == 'multicast':
+            line_bot_api.multicast(
+                [event.source.group_id], [
+                    TextSendMessage(text='THIS IS A MULTICAST MESSAGE'),
+                ]
+            )
+
+        if command == 'profile':
+            profile = line_bot_api.get_profile(event.source.user_id)
+            line_bot_api.reply_message(
+                event.reply_token, [
+                    TextSendMessage(text='Display name: ' + profile.display_name),
+                    TextSendMessage(text='Status message: ' + str(profile.status_message))
+                ]
+            )
+
+        if command == 'quota':
+            quota = line_bot_api.get_message_quota()
+            line_bot_api.reply_message(
+                event.reply_token, [
+                    TextSendMessage(text='type: ' + quota.type),
+                    TextSendMessage(text='value: ' + str(quota.value))
+                ]
+            )
+
         if command == 'nuke':
             line_bot_api.reply_message(
-                event.reply_token, [TextSendMessage(text='boom') for _ in range(5)]
+                event.reply_token, [TextSendMessage(text='boom') for _ in range(5)], notification_disabled=True
             )
 
         if command == 'hello':
             line_bot_api.reply_message(
                 event.reply_token, [
                     TextSendMessage(text=f'Gday {rest}')
-                ]
+                ], notification_disabled=True
             )
 
         if command == 'praise':
@@ -156,20 +187,26 @@ def message_text(event):
             line_bot_api.reply_message(
                 event.reply_token, [
                     TextSendMessage(text=f'{rest} is awesome at everything')
-                ]
+                ], notification_disabled=True
             )
 
         if command == 'ead':
-            if 'sambot' in rest.lower():
+            if rest and 'sambot' in rest.lower():
                 line_bot_api.reply_message(
                     event.reply_token, [
                         TextSendMessage(text=f'Yea Nah, You Eat a Dick')
                     ]
                 )
-            else:
+            elif rest:
                 line_bot_api.reply_message(
                     event.reply_token, [
                         TextSendMessage(text=f'Eat a Dick {rest}')
+                    ]
+                )
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token, [
+                        TextSendMessage(text=f'Who should eat a dick?')
                     ]
                 )
 
@@ -181,13 +218,13 @@ def message_text(event):
                 line_bot_api.reply_message(
                     event.reply_token, [
                         TextSendMessage(text=pyjokes.get_joke(category=rest))
-                    ]
+                    ], notification_disabled=True
                 )
             else:
                 line_bot_api.reply_message(
                     event.reply_token, [
                         TextSendMessage(text=pyjokes.get_joke())
-                    ]
+                    ], notification_disabled=True
                 )
 
         if command == 'decide_for_us':
@@ -205,13 +242,13 @@ def message_text(event):
                 line_bot_api.reply_message(
                     event.reply_token, [
                         TextSendMessage(text=f'Yea Nah, Your worthless')
-                    ]
+                    ], notification_disabled=True
                 )
             else:
                 line_bot_api.reply_message(
                     event.reply_token, [
                         TextSendMessage(text=f'{rest} Your Worthless')
-                    ]
+                    ], notification_disabled=True
                 )
 
         if command == 'translate':
